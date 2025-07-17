@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Plus, ShoppingCart, Eye, Edit } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
+import { supabase } from "@/lib/supabase"
 
 interface PurchaseOrder {
   id: string
@@ -79,12 +80,22 @@ export default function PurchaseOrdersPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    setTimeout(() => {
-      setOrders(mockPurchaseOrders)
+    const fetchOrders = async () => {
+      setLoading(true)
+      setError("")
+      const { data, error } = await supabase.from("purchase_orders").select("id, po_number, status, order_date, expected_date, total_amount, currency")
+      if (error) {
+        setError(error.message)
+        setOrders([])
+      } else {
+        setOrders(data || [])
+      }
       setLoading(false)
-    }, 1000)
+    }
+    fetchOrders()
   }, [])
 
   const filteredOrders = orders.filter((order) => {
@@ -217,6 +228,7 @@ export default function PurchaseOrdersPage() {
               </TableBody>
             </Table>
           )}
+          {error && <div className="text-red-500 text-center mb-4">{error}</div>}
         </CardContent>
       </Card>
     </div>
