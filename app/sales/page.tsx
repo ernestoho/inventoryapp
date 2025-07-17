@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Search, Plus, Receipt, Eye, Coffee, Utensils } from "lucide-react"
+import { Search, Plus, Receipt, Eye, Coffee, Utensils, Edit, Trash2 } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
 import { supabase } from "@/lib/supabase"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 
 interface Sale {
   id: string
@@ -83,22 +86,83 @@ export default function SalesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingSale, setEditingSale] = useState<Sale | null>(null)
+  const [form, setForm] = useState<Partial<Sale>>({})
+  const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState("")
+
+  const fetchSales = async () => {
+    setLoading(true)
+    setError("")
+    const { data, error } = await supabase.from("sales").select("id, sale_number, customer_name, location_id, sale_date, total_amount, payment_method, table_number, server_name, items_count, status")
+    if (error) {
+      setError(error.message)
+      setSales([])
+    } else {
+      setSales(data || [])
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
-    const fetchSales = async () => {
-      setLoading(true)
-      setError("")
-      const { data, error } = await supabase.from("sales").select("id, sale_number, customer_name, location_id, sale_date, total_amount, payment_method, table_number, server_name, items_count, status")
-      if (error) {
-        setError(error.message)
-        setSales([])
-      } else {
-        setSales(data || [])
-      }
-      setLoading(false)
-    }
     fetchSales()
   }, [])
+
+  const openCreateModal = () => {
+    setEditingSale(null)
+    setForm({})
+    setModalOpen(true)
+  }
+
+  const openEditModal = (sale: Sale) => {
+    setEditingSale(sale)
+    setForm(sale)
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setEditingSale(null)
+    setForm({})
+    setFormError("")
+  }
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormLoading(true)
+    setFormError("")
+    if (editingSale) {
+      // Update
+      const { error } = await supabase.from("sales").update(form).eq("id", editingSale.id)
+      if (error) setFormError(error.message)
+    } else {
+      // Create
+      const { error } = await supabase.from("sales").insert([form])
+      if (error) setFormError(error.message)
+    }
+    setFormLoading(false)
+    if (!formError) {
+      closeModal()
+      fetchSales()
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this sale?")) return
+    setLoading(true)
+    const { error } = await supabase.from("sales").delete().eq("id", id)
+    if (error) setError(error.message)
+    fetchSales()
+  }
 
   const filteredSales = sales.filter(
     (sale) =>
@@ -148,7 +212,7 @@ export default function SalesPage() {
           <h1 className="text-3xl font-bold">Sales</h1>
           <p className="text-gray-600">Track sales from bars and kitchens</p>
         </div>
-        <Button>
+        <Button onClick={openCreateModal}>
           <Plus className="mr-2 h-4 w-4" />
           New Sale
         </Button>
@@ -271,8 +335,11 @@ export default function SalesPage() {
                     <TableCell>{getPaymentBadge(sale.payment_method)}</TableCell>
                     <TableCell>{getStatusBadge(sale.status)}</TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="sm">
-                        <Eye className="h-4 w-4" />
+                      <Button variant="ghost" size="sm" onClick={() => openEditModal(sale)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(sale.id)}>
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -283,6 +350,65 @@ export default function SalesPage() {
           {error && <div className="text-red-500 text-center mb-4">{error}</div>}
         </CardContent>
       </Card>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingSale ? "Edit Sale" : "New Sale"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleFormSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="sale_number">Sale Number</Label>
+              <Input id="sale_number" name="sale_number" value={form.sale_number || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer_name">Customer Name</Label>
+              <Input id="customer_name" name="customer_name" value={form.customer_name || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="location_id">Location ID</Label>
+              <Input id="location_id" name="location_id" value={form.location_id || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sale_date">Sale Date</Label>
+              <Input id="sale_date" name="sale_date" value={form.sale_date || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="total_amount">Total Amount</Label>
+              <Input id="total_amount" name="total_amount" type="number" value={form.total_amount || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="payment_method">Payment Method</Label>
+              <Input id="payment_method" name="payment_method" value={form.payment_method || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="table_number">Table Number</Label>
+              <Input id="table_number" name="table_number" value={form.table_number || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="server_name">Server Name</Label>
+              <Input id="server_name" name="server_name" value={form.server_name || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="items_count">Items Count</Label>
+              <Input id="items_count" name="items_count" type="number" value={form.items_count || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Input id="status" name="status" value={form.status || ""} onChange={handleFormChange} />
+            </div>
+            {formError && <div className="text-red-500 text-center">{formError}</div>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeModal} disabled={formLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={formLoading}>
+                {formLoading ? "Saving..." : editingSale ? "Update" : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
