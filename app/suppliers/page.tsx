@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Search, Plus, Truck, Phone, Mail, Edit, Eye } from "lucide-react"
+import { Search, Plus, Truck, Phone, Mail, Edit, Eye, Trash2 } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
 import { supabase } from "@/lib/supabase"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 
 interface Supplier {
   id: string
@@ -99,22 +101,83 @@ export default function SuppliersPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
+  const [form, setForm] = useState<Partial<Supplier>>({})
+  const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState("")
+
+  const fetchSuppliers = async () => {
+    setLoading(true)
+    setError("")
+    const { data, error } = await supabase.from("suppliers").select("id, name, contact_person, email, phone, address, city, country, currency, payment_terms, lead_time_days, is_active")
+    if (error) {
+      setError(error.message)
+      setSuppliers([])
+    } else {
+      setSuppliers(data || [])
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
-    const fetchSuppliers = async () => {
-      setLoading(true)
-      setError("")
-      const { data, error } = await supabase.from("suppliers").select("id, name, contact_person, email, phone, address, city, country, currency, payment_terms, lead_time_days, is_active")
-      if (error) {
-        setError(error.message)
-        setSuppliers([])
-      } else {
-        setSuppliers(data || [])
-      }
-      setLoading(false)
-    }
     fetchSuppliers()
   }, [])
+
+  const openCreateModal = () => {
+    setEditingSupplier(null)
+    setForm({})
+    setModalOpen(true)
+  }
+
+  const openEditModal = (supplier: Supplier) => {
+    setEditingSupplier(supplier)
+    setForm(supplier)
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setEditingSupplier(null)
+    setForm({})
+    setFormError("")
+  }
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target
+    setForm((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }))
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormLoading(true)
+    setFormError("")
+    if (editingSupplier) {
+      // Update
+      const { error } = await supabase.from("suppliers").update(form).eq("id", editingSupplier.id)
+      if (error) setFormError(error.message)
+    } else {
+      // Create
+      const { error } = await supabase.from("suppliers").insert([form])
+      if (error) setFormError(error.message)
+    }
+    setFormLoading(false)
+    if (!formError) {
+      closeModal()
+      fetchSuppliers()
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this supplier?")) return
+    setLoading(true)
+    const { error } = await supabase.from("suppliers").delete().eq("id", id)
+    if (error) setError(error.message)
+    fetchSuppliers()
+  }
 
   const filteredSuppliers = suppliers.filter(
     (supplier) =>
@@ -132,7 +195,7 @@ export default function SuppliersPage() {
           <h1 className="text-3xl font-bold">Suppliers</h1>
           <p className="text-gray-600">Manage your restaurant suppliers and vendors</p>
         </div>
-        <Button>
+        <Button onClick={openCreateModal}>
           <Plus className="mr-2 h-4 w-4" />
           Add Supplier
         </Button>
@@ -275,11 +338,11 @@ export default function SuppliersPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal(supplier)}>
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(supplier.id)}>
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -290,6 +353,69 @@ export default function SuppliersPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingSupplier ? "Edit Supplier" : "Add Supplier"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleFormSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" name="name" value={form.name || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contact_person">Contact Person</Label>
+              <Input id="contact_person" name="contact_person" value={form.contact_person || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" name="email" value={form.email || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone</Label>
+              <Input id="phone" name="phone" value={form.phone || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="address">Address</Label>
+              <Input id="address" name="address" value={form.address || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="city">City</Label>
+              <Input id="city" name="city" value={form.city || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="country">Country</Label>
+              <Input id="country" name="country" value={form.country || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="currency">Currency</Label>
+              <Input id="currency" name="currency" value={form.currency || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="payment_terms">Payment Terms (days)</Label>
+              <Input id="payment_terms" name="payment_terms" type="number" value={form.payment_terms || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="lead_time_days">Lead Time (days)</Label>
+              <Input id="lead_time_days" name="lead_time_days" type="number" value={form.lead_time_days || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="is_active">Is Active</Label>
+              <Input id="is_active" name="is_active" type="checkbox" checked={!!form.is_active} onChange={handleFormChange} />
+            </div>
+            {formError && <div className="text-red-500 text-center">{formError}</div>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeModal} disabled={formLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={formLoading}>
+                {formLoading ? "Saving..." : editingSupplier ? "Update" : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
