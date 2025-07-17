@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Plus, ShoppingCart, Eye, Edit } from "lucide-react"
+import { Search, Plus, ShoppingCart, Eye, Edit, Trash2 } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
 import { supabase } from "@/lib/supabase"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 
 interface PurchaseOrder {
   id: string
@@ -81,22 +83,83 @@ export default function PurchaseOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingOrder, setEditingOrder] = useState<PurchaseOrder | null>(null)
+  const [form, setForm] = useState<Partial<PurchaseOrder>>({})
+  const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState("")
+
+  const fetchOrders = async () => {
+    setLoading(true)
+    setError("")
+    const { data, error } = await supabase.from("purchase_orders").select("id, po_number, status, order_date, expected_date, total_amount, currency")
+    if (error) {
+      setError(error.message)
+      setOrders([])
+    } else {
+      setOrders(data || [])
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
-    const fetchOrders = async () => {
-      setLoading(true)
-      setError("")
-      const { data, error } = await supabase.from("purchase_orders").select("id, po_number, status, order_date, expected_date, total_amount, currency")
-      if (error) {
-        setError(error.message)
-        setOrders([])
-      } else {
-        setOrders(data || [])
-      }
-      setLoading(false)
-    }
     fetchOrders()
   }, [])
+
+  const openCreateModal = () => {
+    setEditingOrder(null)
+    setForm({})
+    setModalOpen(true)
+  }
+
+  const openEditModal = (order: PurchaseOrder) => {
+    setEditingOrder(order)
+    setForm(order)
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setEditingOrder(null)
+    setForm({})
+    setFormError("")
+  }
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormLoading(true)
+    setFormError("")
+    if (editingOrder) {
+      // Update
+      const { error } = await supabase.from("purchase_orders").update(form).eq("id", editingOrder.id)
+      if (error) setFormError(error.message)
+    } else {
+      // Create
+      const { error } = await supabase.from("purchase_orders").insert([form])
+      if (error) setFormError(error.message)
+    }
+    setFormLoading(false)
+    if (!formError) {
+      closeModal()
+      fetchOrders()
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this purchase order?")) return
+    setLoading(true)
+    const { error } = await supabase.from("purchase_orders").delete().eq("id", id)
+    if (error) setError(error.message)
+    fetchOrders()
+  }
 
   const filteredOrders = orders.filter((order) => {
     const matchesSearch =
@@ -136,7 +199,7 @@ export default function PurchaseOrdersPage() {
           <h1 className="text-3xl font-bold">Purchase Orders</h1>
           <p className="text-gray-600">Manage orders from suppliers to Amazon storage</p>
         </div>
-        <Button>
+        <Button onClick={openCreateModal}>
           <Plus className="mr-2 h-4 w-4" />
           New Purchase Order
         </Button>
@@ -218,8 +281,11 @@ export default function PurchaseOrdersPage() {
                         <Button variant="ghost" size="sm">
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal(order)}>
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(order.id)}>
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -231,6 +297,49 @@ export default function PurchaseOrdersPage() {
           {error && <div className="text-red-500 text-center mb-4">{error}</div>}
         </CardContent>
       </Card>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingOrder ? "Edit Purchase Order" : "New Purchase Order"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleFormSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="po_number">PO Number</Label>
+              <Input id="po_number" name="po_number" value={form.po_number || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Input id="status" name="status" value={form.status || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="order_date">Order Date</Label>
+              <Input id="order_date" name="order_date" value={form.order_date || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="expected_date">Expected Date</Label>
+              <Input id="expected_date" name="expected_date" value={form.expected_date || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="total_amount">Total Amount</Label>
+              <Input id="total_amount" name="total_amount" type="number" value={form.total_amount || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="currency">Currency</Label>
+              <Input id="currency" name="currency" value={form.currency || ""} onChange={handleFormChange} />
+            </div>
+            {formError && <div className="text-red-500 text-center">{formError}</div>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeModal} disabled={formLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={formLoading}>
+                {formLoading ? "Saving..." : editingOrder ? "Update" : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
