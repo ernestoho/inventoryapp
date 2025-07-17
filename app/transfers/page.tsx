@@ -7,9 +7,12 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Plus, ArrowRightLeft, Eye, Edit, Warehouse, Coffee, ChefHat } from "lucide-react"
+import { Search, Plus, ArrowRightLeft, Eye, Edit, Warehouse, Coffee, ChefHat, Trash2 } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
 import { supabase } from "@/lib/supabase"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 
 interface TransferOrder {
   id: string
@@ -89,22 +92,83 @@ export default function TransfersPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingTransfer, setEditingTransfer] = useState<TransferOrder | null>(null)
+  const [form, setForm] = useState<Partial<TransferOrder>>({})
+  const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState("")
+
+  const fetchTransfers = async () => {
+    setLoading(true)
+    setError("")
+    const { data, error } = await supabase.from("transfer_orders").select("id, transfer_number, from_location_id, to_location_id, status, transfer_date, completed_date, created_by")
+    if (error) {
+      setError(error.message)
+      setTransfers([])
+    } else {
+      setTransfers(data || [])
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
-    const fetchTransfers = async () => {
-      setLoading(true)
-      setError("")
-      const { data, error } = await supabase.from("transfer_orders").select("id, transfer_number, from_location_id, to_location_id, status, transfer_date, completed_date, created_by")
-      if (error) {
-        setError(error.message)
-        setTransfers([])
-      } else {
-        setTransfers(data || [])
-      }
-      setLoading(false)
-    }
     fetchTransfers()
   }, [])
+
+  const openCreateModal = () => {
+    setEditingTransfer(null)
+    setForm({})
+    setModalOpen(true)
+  }
+
+  const openEditModal = (transfer: TransferOrder) => {
+    setEditingTransfer(transfer)
+    setForm(transfer)
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setEditingTransfer(null)
+    setForm({})
+    setFormError("")
+  }
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormLoading(true)
+    setFormError("")
+    if (editingTransfer) {
+      // Update
+      const { error } = await supabase.from("transfer_orders").update(form).eq("id", editingTransfer.id)
+      if (error) setFormError(error.message)
+    } else {
+      // Create
+      const { error } = await supabase.from("transfer_orders").insert([form])
+      if (error) setFormError(error.message)
+    }
+    setFormLoading(false)
+    if (!formError) {
+      closeModal()
+      fetchTransfers()
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this transfer?")) return
+    setLoading(true)
+    const { error } = await supabase.from("transfer_orders").delete().eq("id", id)
+    if (error) setError(error.message)
+    fetchTransfers()
+  }
 
   const filteredTransfers = transfers.filter((transfer) => {
     const matchesSearch =
@@ -154,7 +218,7 @@ export default function TransfersPage() {
           <h1 className="text-3xl font-bold">Traspasos (Transfers)</h1>
           <p className="text-gray-600">Move inventory between Amazon storage and operational locations</p>
         </div>
-        <Button>
+        <Button onClick={openCreateModal}>
           <Plus className="mr-2 h-4 w-4" />
           New Transfer
         </Button>
@@ -297,8 +361,11 @@ export default function TransfersPage() {
                         <Button variant="ghost" size="sm">
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal(transfer)}>
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(transfer.id)}>
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -310,6 +377,53 @@ export default function TransfersPage() {
           {error && <div className="text-red-500 text-center mb-4">{error}</div>}
         </CardContent>
       </Card>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingTransfer ? "Edit Transfer" : "New Transfer"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleFormSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="transfer_number">Transfer Number</Label>
+              <Input id="transfer_number" name="transfer_number" value={form.transfer_number || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="from_location_id">From Location ID</Label>
+              <Input id="from_location_id" name="from_location_id" value={form.from_location_id || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="to_location_id">To Location ID</Label>
+              <Input id="to_location_id" name="to_location_id" value={form.to_location_id || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Input id="status" name="status" value={form.status || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="transfer_date">Transfer Date</Label>
+              <Input id="transfer_date" name="transfer_date" value={form.transfer_date || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="completed_date">Completed Date</Label>
+              <Input id="completed_date" name="completed_date" value={form.completed_date || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="created_by">Created By</Label>
+              <Input id="created_by" name="created_by" value={form.created_by || ""} onChange={handleFormChange} />
+            </div>
+            {formError && <div className="text-red-500 text-center">{formError}</div>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeModal} disabled={formLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={formLoading}>
+                {formLoading ? "Saving..." : editingTransfer ? "Update" : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
