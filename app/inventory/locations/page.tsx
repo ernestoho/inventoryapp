@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { MapPin, Plus, Edit, Warehouse, Coffee, ChefHat } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
+import { supabase } from "@/lib/supabase"
 
 interface Location {
   id: string
@@ -95,12 +96,22 @@ const mockLocations: Location[] = [
 export default function LocationsPage() {
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    setTimeout(() => {
-      setLocations(mockLocations)
+    const fetchLocations = async () => {
+      setLoading(true)
+      setError("")
+      const { data, error } = await supabase.from("locations").select("id, name, address, city, location_type, is_active")
+      if (error) {
+        setError(error.message)
+        setLocations([])
+      } else {
+        setLocations(data || [])
+      }
       setLoading(false)
-    }, 1000)
+    }
+    fetchLocations()
   }, [])
 
   const getLocationIcon = (type: string) => {
@@ -143,6 +154,8 @@ export default function LocationsPage() {
           Add Location
         </Button>
       </div>
+
+      {error && <div className="text-red-500 text-center mb-4">{error}</div>}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {locations
