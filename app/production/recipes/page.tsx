@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Search, Plus, ChefHat, Eye, Edit, Clock } from "lucide-react"
+import { Search, Plus, ChefHat, Eye, Edit, Clock, Trash2 } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
 import { supabase } from "@/lib/supabase"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+
 
 interface Recipe {
   id: string
@@ -84,22 +87,83 @@ export default function RecipesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
+  const [form, setForm] = useState<Partial<Recipe>>({})
+  const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState("")
+
+  const fetchRecipes = async () => {
+    setLoading(true)
+    setError("")
+    const { data, error } = await supabase.from("recipes").select("id, name, sales_item_name, category, serving_size, preparation_time, ingredients_count, cost_per_serving, selling_price, margin, is_active")
+    if (error) {
+      setError(error.message)
+      setRecipes([])
+    } else {
+      setRecipes(data || [])
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
-    const fetchRecipes = async () => {
-      setLoading(true)
-      setError("")
-      const { data, error } = await supabase.from("recipes").select("id, name, sales_item_name, category, serving_size, preparation_time, ingredients_count, cost_per_serving, selling_price, margin, is_active")
-      if (error) {
-        setError(error.message)
-        setRecipes([])
-      } else {
-        setRecipes(data || [])
-      }
-      setLoading(false)
-    }
     fetchRecipes()
   }, [])
+
+  const openCreateModal = () => {
+    setEditingRecipe(null)
+    setForm({})
+    setModalOpen(true)
+  }
+
+  const openEditModal = (recipe: Recipe) => {
+    setEditingRecipe(recipe)
+    setForm(recipe)
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setEditingRecipe(null)
+    setForm({})
+    setFormError("")
+  }
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target
+    setForm((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }))
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormLoading(true)
+    setFormError("")
+    if (editingRecipe) {
+      // Update
+      const { error } = await supabase.from("recipes").update(form).eq("id", editingRecipe.id)
+      if (error) setFormError(error.message)
+    } else {
+      // Create
+      const { error } = await supabase.from("recipes").insert([form])
+      if (error) setFormError(error.message)
+    }
+    setFormLoading(false)
+    if (!formError) {
+      closeModal()
+      fetchRecipes()
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this recipe?")) return
+    setLoading(true)
+    const { error } = await supabase.from("recipes").delete().eq("id", id)
+    if (error) setError(error.message)
+    fetchRecipes()
+  }
 
   const filteredRecipes = recipes.filter(
     (recipe) =>
@@ -136,7 +200,7 @@ export default function RecipesPage() {
           <h1 className="text-3xl font-bold">Recipes</h1>
           <p className="text-gray-600">Manage cocktail and food recipes with ingredient tracking</p>
         </div>
-        <Button>
+        <Button onClick={openCreateModal}>
           <Plus className="mr-2 h-4 w-4" />
           New Recipe
         </Button>
@@ -268,8 +332,11 @@ export default function RecipesPage() {
                         <Button variant="ghost" size="sm">
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal(recipe)}>
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(recipe.id)}>
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -280,6 +347,65 @@ export default function RecipesPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingRecipe ? "Edit Recipe" : "New Recipe"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleFormSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" name="name" value={form.name || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sales_item_name">Sales Item Name</Label>
+              <Input id="sales_item_name" name="sales_item_name" value={form.sales_item_name || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <Input id="category" name="category" value={form.category || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="serving_size">Serving Size</Label>
+              <Input id="serving_size" name="serving_size" type="number" value={form.serving_size || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="preparation_time">Preparation Time (min)</Label>
+              <Input id="preparation_time" name="preparation_time" type="number" value={form.preparation_time || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ingredients_count">Ingredients Count</Label>
+              <Input id="ingredients_count" name="ingredients_count" type="number" value={form.ingredients_count || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cost_per_serving">Cost per Serving</Label>
+              <Input id="cost_per_serving" name="cost_per_serving" type="number" value={form.cost_per_serving || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="selling_price">Selling Price</Label>
+              <Input id="selling_price" name="selling_price" type="number" value={form.selling_price || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="margin">Margin (%)</Label>
+              <Input id="margin" name="margin" type="number" value={form.margin || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="is_active">Is Active</Label>
+              <Input id="is_active" name="is_active" type="checkbox" checked={!!form.is_active} onChange={handleFormChange} />
+            </div>
+            {formError && <div className="text-red-500 text-center">{formError}</div>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeModal} disabled={formLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={formLoading}>
+                {formLoading ? "Saving..." : editingRecipe ? "Update" : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
