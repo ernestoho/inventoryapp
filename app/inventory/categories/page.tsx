@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { FolderOpen, Plus, Edit, Trash2, Wine, Coffee, Utensils, Package } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
+import { supabase } from "@/lib/supabase"
 
 interface Category {
   id: string
@@ -57,12 +58,22 @@ const mockCategories: Category[] = [
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    setTimeout(() => {
-      setCategories(mockCategories)
+    const fetchCategories = async () => {
+      setLoading(true)
+      setError("")
+      const { data, error } = await supabase.from("categories").select("id, name, description")
+      if (error) {
+        setError(error.message)
+        setCategories([])
+      } else {
+        setCategories(data || [])
+      }
       setLoading(false)
-    }, 1000)
+    }
+    fetchCategories()
   }, [])
 
   const getCategoryIcon = (icon: string) => {
@@ -94,6 +105,8 @@ export default function CategoriesPage() {
           Add Category
         </Button>
       </div>
+
+      {error && <div className="text-red-500 text-center mb-4">{error}</div>}
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {categories.map((category) => (
