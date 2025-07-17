@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Search, Plus, ChefHat, Eye, Edit, Clock } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
+import { supabase } from "@/lib/supabase"
 
 interface Recipe {
   id: string
@@ -82,12 +83,22 @@ export default function RecipesPage() {
   const [recipes, setRecipes] = useState<Recipe[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    setTimeout(() => {
-      setRecipes(mockRecipes)
+    const fetchRecipes = async () => {
+      setLoading(true)
+      setError("")
+      const { data, error } = await supabase.from("recipes").select("id, name, sales_item_name, category, serving_size, preparation_time, ingredients_count, cost_per_serving, selling_price, margin, is_active")
+      if (error) {
+        setError(error.message)
+        setRecipes([])
+      } else {
+        setRecipes(data || [])
+      }
       setLoading(false)
-    }, 1000)
+    }
+    fetchRecipes()
   }, [])
 
   const filteredRecipes = recipes.filter(
@@ -202,6 +213,7 @@ export default function RecipesPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {error && <div className="text-red-500 text-center mb-4">{error}</div>}
           {loading ? (
             <div className="text-center py-8">Loading recipes...</div>
           ) : (
