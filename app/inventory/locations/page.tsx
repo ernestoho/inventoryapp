@@ -5,9 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { MapPin, Plus, Edit, Warehouse, Coffee, ChefHat } from "lucide-react"
+import { MapPin, Plus, Edit, Warehouse, Coffee, ChefHat, Trash2 } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
 import { supabase } from "@/lib/supabase"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 
 interface Location {
   id: string
@@ -97,22 +100,83 @@ export default function LocationsPage() {
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingLocation, setEditingLocation] = useState<Location | null>(null)
+  const [form, setForm] = useState<Partial<Location>>({})
+  const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState("")
+
+  const fetchLocations = async () => {
+    setLoading(true)
+    setError("")
+    const { data, error } = await supabase.from("locations").select("id, name, address, city, location_type, is_active")
+    if (error) {
+      setError(error.message)
+      setLocations([])
+    } else {
+      setLocations(data || [])
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
-    const fetchLocations = async () => {
-      setLoading(true)
-      setError("")
-      const { data, error } = await supabase.from("locations").select("id, name, address, city, location_type, is_active")
-      if (error) {
-        setError(error.message)
-        setLocations([])
-      } else {
-        setLocations(data || [])
-      }
-      setLoading(false)
-    }
     fetchLocations()
   }, [])
+
+  const openCreateModal = () => {
+    setEditingLocation(null)
+    setForm({})
+    setModalOpen(true)
+  }
+
+  const openEditModal = (location: Location) => {
+    setEditingLocation(location)
+    setForm(location)
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setEditingLocation(null)
+    setForm({})
+    setFormError("")
+  }
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target
+    setForm((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }))
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormLoading(true)
+    setFormError("")
+    if (editingLocation) {
+      // Update
+      const { error } = await supabase.from("locations").update(form).eq("id", editingLocation.id)
+      if (error) setFormError(error.message)
+    } else {
+      // Create
+      const { error } = await supabase.from("locations").insert([form])
+      if (error) setFormError(error.message)
+    }
+    setFormLoading(false)
+    if (!formError) {
+      closeModal()
+      fetchLocations()
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this location?")) return
+    setLoading(true)
+    const { error } = await supabase.from("locations").delete().eq("id", id)
+    if (error) setError(error.message)
+    fetchLocations()
+  }
 
   const getLocationIcon = (type: string) => {
     switch (type) {
@@ -149,7 +213,7 @@ export default function LocationsPage() {
           <h1 className="text-3xl font-bold">Locations</h1>
           <p className="text-gray-600">Manage storage locations, bars, and kitchens</p>
         </div>
-        <Button>
+        <Button onClick={openCreateModal}>
           <Plus className="mr-2 h-4 w-4" />
           Add Location
         </Button>
@@ -182,7 +246,7 @@ export default function LocationsPage() {
                     <span>Value:</span>
                     <span className="font-medium">${location.total_value.toLocaleString()}</span>
                   </div>
-                  <Button variant="outline" size="sm" className="w-full mt-3 bg-transparent">
+                  <Button variant="outline" size="sm" className="w-full mt-3 bg-transparent" onClick={() => openEditModal(location)}>
                     <Edit className="mr-2 h-4 w-4" />
                     Manage
                   </Button>
@@ -236,8 +300,11 @@ export default function LocationsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal(location)}>
                           <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(location.id)}>
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -247,6 +314,45 @@ export default function LocationsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingLocation ? "Edit Location" : "Add Location"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleFormSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" name="name" value={form.name || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="address">Address</Label>
+              <Input id="address" name="address" value={form.address || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="city">City</Label>
+              <Input id="city" name="city" value={form.city || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="location_type">Location Type</Label>
+              <Input id="location_type" name="location_type" value={form.location_type || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="is_active">Is Active</Label>
+              <Input id="is_active" name="is_active" type="checkbox" checked={!!form.is_active} onChange={handleFormChange} />
+            </div>
+            {formError && <div className="text-red-500 text-center">{formError}</div>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeModal} disabled={formLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={formLoading}>
+                {formLoading ? "Saving..." : editingLocation ? "Update" : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
