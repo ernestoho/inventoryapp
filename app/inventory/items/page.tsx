@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Search, Plus, Package, Edit, Trash2 } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
+import { supabase } from "@/lib/supabase"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 
 interface Item {
   id: string
@@ -101,14 +104,84 @@ export default function ItemsPage() {
   const [items, setItems] = useState<Item[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<Item | null>(null)
+  const [form, setForm] = useState<Partial<Item>>({})
+  const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState("")
+
+  const fetchItems = async () => {
+    setLoading(true)
+    setError("")
+    const { data, error } = await supabase.from("items").select("id, sku, name, description, unit_of_measure, cost_price, selling_price, reorder_point, is_sales_item, alcohol_content")
+    if (error) {
+      setError(error.message)
+      setItems([])
+    } else {
+      setItems(data || [])
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
-    // Simulate loading
-    setTimeout(() => {
-      setItems(mockItems)
-      setLoading(false)
-    }, 1000)
+    fetchItems()
   }, [])
+
+  const openCreateModal = () => {
+    setEditingItem(null)
+    setForm({})
+    setModalOpen(true)
+  }
+
+  const openEditModal = (item: Item) => {
+    setEditingItem(item)
+    setForm(item)
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setEditingItem(null)
+    setForm({})
+    setFormError("")
+  }
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target
+    setForm((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }))
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormLoading(true)
+    setFormError("")
+    if (editingItem) {
+      // Update
+      const { error } = await supabase.from("items").update(form).eq("id", editingItem.id)
+      if (error) setFormError(error.message)
+    } else {
+      // Create
+      const { error } = await supabase.from("items").insert([form])
+      if (error) setFormError(error.message)
+    }
+    setFormLoading(false)
+    if (!formError) {
+      closeModal()
+      fetchItems()
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this item?")) return
+    setLoading(true)
+    const { error } = await supabase.from("items").delete().eq("id", id)
+    if (error) setError(error.message)
+    fetchItems()
+  }
 
   const filteredItems = items.filter(
     (item) =>
@@ -126,7 +199,7 @@ export default function ItemsPage() {
           <h1 className="text-3xl font-bold">Inventory Items</h1>
           <p className="text-gray-600">Manage your restaurant inventory items</p>
         </div>
-        <Button>
+        <Button onClick={openCreateModal}>
           <Plus className="mr-2 h-4 w-4" />
           Add Item
         </Button>
@@ -151,6 +224,7 @@ export default function ItemsPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {error && <div className="text-red-500 text-center mb-4">{error}</div>}
           {loading ? (
             <div className="text-center py-8">Loading items...</div>
           ) : (
@@ -191,10 +265,10 @@ export default function ItemsPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal(item)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -206,6 +280,61 @@ export default function ItemsPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingItem ? "Edit Item" : "Add Item"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleFormSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="sku">SKU</Label>
+              <Input id="sku" name="sku" value={form.sku || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" name="name" value={form.name || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input id="description" name="description" value={form.description || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="unit_of_measure">Unit of Measure</Label>
+              <Input id="unit_of_measure" name="unit_of_measure" value={form.unit_of_measure || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="cost_price">Cost Price</Label>
+              <Input id="cost_price" name="cost_price" type="number" value={form.cost_price || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="selling_price">Selling Price</Label>
+              <Input id="selling_price" name="selling_price" type="number" value={form.selling_price || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="reorder_point">Reorder Point</Label>
+              <Input id="reorder_point" name="reorder_point" type="number" value={form.reorder_point || ""} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="is_sales_item">Is Sales Item</Label>
+              <Input id="is_sales_item" name="is_sales_item" type="checkbox" checked={!!form.is_sales_item} onChange={handleFormChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="alcohol_content">Alcohol Content</Label>
+              <Input id="alcohol_content" name="alcohol_content" type="number" value={form.alcohol_content || ""} onChange={handleFormChange} />
+            </div>
+            {formError && <div className="text-red-500 text-center">{formError}</div>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeModal} disabled={formLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={formLoading}>
+                {formLoading ? "Saving..." : editingItem ? "Update" : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
