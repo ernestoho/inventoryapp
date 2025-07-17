@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Search, Plus, Receipt, Eye, Coffee, Utensils } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
+import { supabase } from "@/lib/supabase"
 
 interface Sale {
   id: string
@@ -81,12 +82,22 @@ export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    setTimeout(() => {
-      setSales(mockSales)
+    const fetchSales = async () => {
+      setLoading(true)
+      setError("")
+      const { data, error } = await supabase.from("sales").select("id, sale_number, customer_name, location_id, sale_date, total_amount, payment_method, table_number, server_name, items_count, status")
+      if (error) {
+        setError(error.message)
+        setSales([])
+      } else {
+        setSales(data || [])
+      }
       setLoading(false)
-    }, 1000)
+    }
+    fetchSales()
   }, [])
 
   const filteredSales = sales.filter(
@@ -269,6 +280,7 @@ export default function SalesPage() {
               </TableBody>
             </Table>
           )}
+          {error && <div className="text-red-500 text-center mb-4">{error}</div>}
         </CardContent>
       </Card>
     </div>
