@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, Plus, ArrowRightLeft, Eye, Edit, Warehouse, Coffee, ChefHat } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
+import { supabase } from "@/lib/supabase"
 
 interface TransferOrder {
   id: string
@@ -87,12 +88,22 @@ export default function TransfersPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    setTimeout(() => {
-      setTransfers(mockTransferOrders)
+    const fetchTransfers = async () => {
+      setLoading(true)
+      setError("")
+      const { data, error } = await supabase.from("transfer_orders").select("id, transfer_number, from_location_id, to_location_id, status, transfer_date, completed_date, created_by")
+      if (error) {
+        setError(error.message)
+        setTransfers([])
+      } else {
+        setTransfers(data || [])
+      }
       setLoading(false)
-    }, 1000)
+    }
+    fetchTransfers()
   }, [])
 
   const filteredTransfers = transfers.filter((transfer) => {
@@ -296,6 +307,7 @@ export default function TransfersPage() {
               </TableBody>
             </Table>
           )}
+          {error && <div className="text-red-500 text-center mb-4">{error}</div>}
         </CardContent>
       </Card>
     </div>
