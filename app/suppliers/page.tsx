@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Search, Plus, Truck, Phone, Mail, Edit, Eye } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
+import { supabase } from "@/lib/supabase"
 
 interface Supplier {
   id: string
@@ -97,12 +98,22 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    setTimeout(() => {
-      setSuppliers(mockSuppliers)
+    const fetchSuppliers = async () => {
+      setLoading(true)
+      setError("")
+      const { data, error } = await supabase.from("suppliers").select("id, name, contact_person, email, phone, address, city, country, currency, payment_terms, lead_time_days, is_active")
+      if (error) {
+        setError(error.message)
+        setSuppliers([])
+      } else {
+        setSuppliers(data || [])
+      }
       setLoading(false)
-    }, 1000)
+    }
+    fetchSuppliers()
   }, [])
 
   const filteredSuppliers = suppliers.filter(
@@ -200,6 +211,7 @@ export default function SuppliersPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {error && <div className="text-red-500 text-center mb-4">{error}</div>}
           {loading ? (
             <div className="text-center py-8">Loading suppliers...</div>
           ) : (
