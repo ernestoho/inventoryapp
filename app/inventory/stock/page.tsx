@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search, AlertTriangle, Package, ArrowUpDown } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
+import { supabase } from "@/lib/supabase"
 
 interface StockLevel {
   id: string
@@ -24,121 +25,50 @@ interface StockLevel {
   status: "normal" | "low" | "critical" | "expired"
 }
 
-const mockStockLevels: StockLevel[] = [
-  {
-    id: "1",
-    item_name: "Ron Blanco",
-    sku: "RUM-001",
-    location_name: "Amazon Bebidas",
-    location_type: "storage",
-    current_stock: 48,
-    reorder_point: 10,
-    unit_of_measure: "bottle",
-    batch_number: "RUM-2024-001",
-    expiry_date: "2026-01-15",
-    status: "normal",
-  },
-  {
-    id: "2",
-    item_name: "Ron Blanco",
-    sku: "RUM-001",
-    location_name: "Bar Principal",
-    location_type: "bar",
-    current_stock: 6,
-    reorder_point: 10,
-    unit_of_measure: "bottle",
-    batch_number: "RUM-2024-001",
-    expiry_date: "2026-01-15",
-    status: "low",
-  },
-  {
-    id: "3",
-    item_name: "Cerveza Nacional",
-    sku: "BEER-001",
-    location_name: "Amazon Bebidas",
-    location_type: "storage",
-    current_stock: 120,
-    reorder_point: 50,
-    unit_of_measure: "bottle",
-    batch_number: "BEER-2024-001",
-    expiry_date: "2024-08-01",
-    status: "normal",
-  },
-  {
-    id: "4",
-    item_name: "Cerveza Nacional",
-    sku: "BEER-001",
-    location_name: "Bar Principal",
-    location_type: "bar",
-    current_stock: 24,
-    reorder_point: 50,
-    unit_of_measure: "bottle",
-    batch_number: "BEER-2024-001",
-    expiry_date: "2024-08-01",
-    status: "low",
-  },
-  {
-    id: "5",
-    item_name: "Limones",
-    sku: "LIME-001",
-    location_name: "Amazon Comida",
-    location_type: "storage",
-    current_stock: 25,
-    reorder_point: 5,
-    unit_of_measure: "kg",
-    batch_number: "LIME-2024-001",
-    expiry_date: "2024-03-01",
-    status: "expired",
-  },
-  {
-    id: "6",
-    item_name: "Limones",
-    sku: "LIME-001",
-    location_name: "Bar Principal",
-    location_type: "bar",
-    current_stock: 3,
-    reorder_point: 5,
-    unit_of_measure: "kg",
-    batch_number: "LIME-2024-001",
-    expiry_date: "2024-03-01",
-    status: "critical",
-  },
-  {
-    id: "7",
-    item_name: "Vasos Plásticos",
-    sku: "CUP-001",
-    location_name: "Amazon Desechables",
-    location_type: "storage",
-    current_stock: 2000,
-    reorder_point: 500,
-    unit_of_measure: "pcs",
-    status: "normal",
-  },
-  {
-    id: "8",
-    item_name: "Vasos Plásticos",
-    sku: "CUP-001",
-    location_name: "Bar Principal",
-    location_type: "bar",
-    current_stock: 200,
-    reorder_point: 500,
-    unit_of_measure: "pcs",
-    status: "low",
-  },
-]
-
 export default function StockPage() {
   const [stockLevels, setStockLevels] = useState<StockLevel[]>([])
   const [searchQuery, setSearchQuery] = useState("")
   const [locationFilter, setLocationFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
   useEffect(() => {
-    setTimeout(() => {
-      setStockLevels(mockStockLevels)
+    const fetchStock = async () => {
+      setLoading(true)
+      setError("")
+      // Fetch inventory with item and location details
+      const { data, error } = await supabase
+        .from("inventory")
+        .select(`id, quantity:quantity, batch_number, expiry_date, item:items(id, name, sku, unit_of_measure, reorder_point), location:locations(id, name, location_type)`)
+      if (error) {
+        setError(error.message)
+        setStockLevels([])
+      } else {
+        // Map data to StockLevel interface
+        const mapped = (data || []).map((row: any) => ({
+          id: row.id,
+          item_name: row.item?.name || "",
+          sku: row.item?.sku || "",
+          location_name: row.location?.name || "",
+          location_type: row.location?.location_type || "",
+          current_stock: row.quantity,
+          reorder_point: row.item?.reorder_point || 0,
+          unit_of_measure: row.item?.unit_of_measure || "",
+          batch_number: row.batch_number,
+          expiry_date: row.expiry_date,
+          status: (() => {
+            if (row.expiry_date && new Date(row.expiry_date) < new Date()) return "expired"
+            if (row.quantity <= 0) return "critical"
+            if (row.quantity <= (row.item?.reorder_point || 0)) return "low"
+            return "normal"
+          })(),
+        }))
+        setStockLevels(mapped)
+      }
       setLoading(false)
-    }, 1000)
+    }
+    fetchStock()
   }, [])
 
   const filteredStock = stockLevels.filter((stock) => {
@@ -237,6 +167,7 @@ export default function StockPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {error && <div className="text-red-500 text-center mb-4">{error}</div>}
           {loading ? (
             <div className="text-center py-8">Loading stock levels...</div>
           ) : (
