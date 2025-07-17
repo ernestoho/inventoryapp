@@ -8,6 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FolderOpen, Plus, Edit, Trash2, Wine, Coffee, Utensils, Package } from "lucide-react"
 import { DemoBanner } from "@/components/demo-banner"
 import { supabase } from "@/lib/supabase"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 
 interface Category {
   id: string
@@ -59,22 +62,83 @@ export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [form, setForm] = useState<Partial<Category>>({})
+  const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState("")
+
+  const fetchCategories = async () => {
+    setLoading(true)
+    setError("")
+    const { data, error } = await supabase.from("categories").select("id, name, description")
+    if (error) {
+      setError(error.message)
+      setCategories([])
+    } else {
+      setCategories(data || [])
+    }
+    setLoading(false)
+  }
 
   useEffect(() => {
-    const fetchCategories = async () => {
-      setLoading(true)
-      setError("")
-      const { data, error } = await supabase.from("categories").select("id, name, description")
-      if (error) {
-        setError(error.message)
-        setCategories([])
-      } else {
-        setCategories(data || [])
-      }
-      setLoading(false)
-    }
     fetchCategories()
   }, [])
+
+  const openCreateModal = () => {
+    setEditingCategory(null)
+    setForm({})
+    setModalOpen(true)
+  }
+
+  const openEditModal = (category: Category) => {
+    setEditingCategory(category)
+    setForm(category)
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    setModalOpen(false)
+    setEditingCategory(null)
+    setForm({})
+    setFormError("")
+  }
+
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
+    setForm((prev) => ({
+      ...prev,
+      [name]: value,
+    }))
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormLoading(true)
+    setFormError("")
+    if (editingCategory) {
+      // Update
+      const { error } = await supabase.from("categories").update(form).eq("id", editingCategory.id)
+      if (error) setFormError(error.message)
+    } else {
+      // Create
+      const { error } = await supabase.from("categories").insert([form])
+      if (error) setFormError(error.message)
+    }
+    setFormLoading(false)
+    if (!formError) {
+      closeModal()
+      fetchCategories()
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Are you sure you want to delete this category?")) return
+    setLoading(true)
+    const { error } = await supabase.from("categories").delete().eq("id", id)
+    if (error) setError(error.message)
+    fetchCategories()
+  }
 
   const getCategoryIcon = (icon: string) => {
     switch (icon) {
@@ -100,7 +164,7 @@ export default function CategoriesPage() {
           <h1 className="text-3xl font-bold">Categories</h1>
           <p className="text-gray-600">Organize your inventory items by category</p>
         </div>
-        <Button>
+        <Button onClick={openCreateModal}>
           <Plus className="mr-2 h-4 w-4" />
           Add Category
         </Button>
@@ -125,11 +189,11 @@ export default function CategoriesPage() {
             <CardContent>
               <p className="text-sm text-gray-600 mb-4">{category.description}</p>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1 bg-transparent">
+                <Button variant="outline" size="sm" className="flex-1 bg-transparent" onClick={() => openEditModal(category)}>
                   <Edit className="mr-2 h-4 w-4" />
                   Edit
                 </Button>
-                <Button variant="ghost" size="sm">
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(category.id)}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -173,10 +237,10 @@ export default function CategoriesPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" onClick={() => openEditModal(category)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" onClick={() => handleDelete(category.id)}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -188,6 +252,33 @@ export default function CategoriesPage() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={modalOpen} onOpenChange={setModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingCategory ? "Edit Category" : "Add Category"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleFormSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" name="name" value={form.name || ""} onChange={handleFormChange} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input id="description" name="description" value={form.description || ""} onChange={handleFormChange} />
+            </div>
+            {formError && <div className="text-red-500 text-center">{formError}</div>}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={closeModal} disabled={formLoading}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={formLoading}>
+                {formLoading ? "Saving..." : editingCategory ? "Update" : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
